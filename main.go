@@ -32,6 +32,7 @@ func main() {
 	//* 단, 채널의 크기를 직접 조회는 불가능. 그냥 pages값을 쓰는 것.
 	flagQueue := make(chan string, pages)
 	for p :=0 ; p<pages; p++{
+		//flagQueue는 promise로 message수집 중.
 		go makeFilePerPage(targetUrl,flagQueue,p)
 		targetUrl=updateTargetUrl(targetUrl)
 	}
@@ -48,7 +49,7 @@ func makeFilePerPage(targetUrl string, flagQueue chan string, p int){
 	posts:=parsePage(page)
 	parsedPagePosts := parsePagePosts(posts)
 	writePagePosts(parsedPagePosts)
-	//* 여기선 fmt.Sprintf로 포맷팅 하는듯
+	//* 여기선 fmt.Sprintf로 포맷팅 하는듯ㄴ
 	message := fmt.Sprintf("Finished page: %d", p+1)
 	flagQueue <- message
 }
@@ -101,23 +102,33 @@ func slicePost(post parsedPost) []string{
 
 func parsePagePosts(posts *goquery.Selection) []parsedPost {
 	parsedPagePosts:= []parsedPost{}
+	channelPosts := make(chan parsedPost, posts.Length())
 	posts.Each(func(i int, post *goquery.Selection) {
-		madePost := parsedPost{
-			id:0,
-			title: "",
-			date: "",
-			commentNum: 0,
-			recommendNum: 0,
-		}
-		tId, _:=post.Attr("data-no")
-		madePost.id,_ = strconv.Atoi(tId)
-		madePost.title = strings.Split(strings.TrimSpace(post.Find(".gall_tit>a").Text()),"[")[0]
-		madePost. date,_= post.Find(".gall_date").Attr("title")
-		madePost.recommendNum,_ = strconv.Atoi(post.Find(".gall_recommend").Text())
-		madePost.commentNum, _= strconv.Atoi(strings.Trim(post.Find(".reply_num").Text(),"[]"))
-		parsedPagePosts = append(parsedPagePosts, madePost)
+		go makeParsePost(post,channelPosts)
 	})
+
+	for i :=0; i<posts.Length(); i++{
+		madePost := <- channelPosts
+		parsedPagePosts = append(parsedPagePosts, madePost)
+	}
 	return parsedPagePosts
+}
+
+func makeParsePost(post *goquery.Selection, channelPosts chan parsedPost) {
+	madePost := parsedPost{
+		id:0,
+		title: "",
+		date: "",
+		commentNum: 0,
+		recommendNum: 0,
+	}
+	tId, _:=post.Attr("data-no")
+	madePost.id,_ = strconv.Atoi(tId)
+	madePost.title = strings.Split(strings.TrimSpace(post.Find(".gall_tit>a").Text()),"[")[0]
+	madePost. date,_= post.Find(".gall_date").Attr("title")
+	madePost.recommendNum,_ = strconv.Atoi(post.Find(".gall_recommend").Text())
+	madePost.commentNum, _= strconv.Atoi(strings.Trim(post.Find(".reply_num").Text(),"[]"))
+	channelPosts <- madePost
 }
 
 func parsePage(res *http.Response) *goquery.Selection{
