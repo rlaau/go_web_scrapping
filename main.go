@@ -68,10 +68,20 @@ func writePagePosts(posts []parsedPost){
 		handledError(err)
 	}
 
+	chanWrite := make(chan bool, len(posts))
 	for _, post := range posts {
-		slicedPost := slicePost(post)
-		w.Write(slicedPost)
+		go func(post parsedPost){
+			slicedPost := slicePost(post)
+			w.Write(slicedPost)
+			chanWrite <- true
+		}(post)
 	}
+	for i :=0; i<len(posts); i++{
+		<-chanWrite
+	}
+
+
+	
 
 }
 func getHeader(post parsedPost) []string{
